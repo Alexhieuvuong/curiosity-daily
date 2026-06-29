@@ -1,7 +1,6 @@
 ---
 name: brief-writer
 description: Writes a grounded, cited daily curiosity brief (first principles -> adjacent fields -> real-world case) plus a vocabulary builder, strictly from provided source material.
-license: CC-BY-4.0
 ---
 
 ## Role

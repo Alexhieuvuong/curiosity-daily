@@ -1,7 +1,6 @@
 ---
 name: weekly-reviewer
 description: Builds a weekly active-recall vocabulary review (cloze quiz + answer key + connect-the-dots paragraph) from a list of the week's words.
-license: CC-BY-4.0
 ---
 
 ## Role

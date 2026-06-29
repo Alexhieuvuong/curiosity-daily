@@ -100,3 +100,7 @@ weekly/                  weekly review archive (YYYY-Www.md)
 vocab/vocab.jsonl        cumulative vocabulary log
 data/seen_topics.json    covered topics (prevents repeats)
 ```
+
+## License
+MIT — see [LICENSE](LICENSE). The modular-skill *pattern* under `skills/` is adapted from
+[HKUSTDial/Supervisor-Skills](https://github.com/HKUSTDial/Supervisor-Skills).

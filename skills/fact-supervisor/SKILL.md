@@ -1,7 +1,6 @@
 ---
 name: fact-supervisor
 description: Audits a drafted grounded brief against its sources and revises it to remove unsupported or uncited claims before delivery. Use after a brief is written, before it is sent.
-license: CC-BY-4.0
 ---
 
 ## Role
