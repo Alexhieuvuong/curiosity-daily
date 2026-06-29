@@ -33,6 +33,7 @@ from topics import (  # noqa: E402  (import after dotenv load is intentional)
     load_interests, load_seen, already_done_today, recent_topic_titles,
     pick_area, append_seen, slugify, today_str,
 )
+from research import fetch_sources  # noqa: E402
 from generate import generate  # noqa: E402
 from vocab_log import append_vocab  # noqa: E402
 from email_brief import send_email  # noqa: E402
@@ -59,7 +60,10 @@ def main():
     recent = recent_topic_titles(seen, 30)
     print(f"Area: {area}")
 
-    topic, body, vocab = generate(area, recent, date_str)
+    sources = fetch_sources(area)
+    print(f"Researched {len(sources)} source(s): {[s['title'] for s in sources]}")
+
+    topic, body, vocab = generate(area, recent, date_str, sources)
     print(f"Topic: {topic}  ({len(vocab)} vocab words)")
 
     if args.dry_run:

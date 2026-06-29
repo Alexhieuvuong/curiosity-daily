@@ -14,9 +14,19 @@ second-order effects, and one open question left deliberately unresolved. It the
 - A dated archive file: `daily/YYYY-MM-DD-<topic-slug>.md`.
 - New words appended to `vocab/vocab.jsonl` (one JSON row per word — Anki/Quizlet friendly).
 
+## Grounded, not fabricated
+Each brief is **research-and-summary, not free invention.** Before writing, the tool
+retrieves real reference text from Wikipedia (`scripts/research.py`, free, no key). The
+model must base every factual claim on that source material and **cite it inline as [n]**;
+anything illustrative is prefixed `Illustrative:`; specific numbers/dates/named cases that
+aren't in the sources are not allowed. The `## Sources` list is injected from the real
+retrieval result — the URLs can't be fabricated by the model. If retrieval fails, the brief
+falls back to a clearly-labeled first-principles mode that avoids stating specific facts.
+
 ## Brief structure
-Why this is interesting → The core mechanic → Break it into pieces → Follow the incentives →
-Second-order effects → A question to sit with → Go deeper → **Vocabulary Builder**.
+Why this is interesting → First principles → Break it into pieces → Follow the incentives →
+How it echoes elsewhere (adjacent fields) → A real-world case (cited) → Second-order effects
+→ A question to sit with → Go deeper → Sources → **Vocabulary Builder**.
 
 The "Go deeper" threads and the open question are good prompts to then discuss with Claude.
 
@@ -61,7 +71,8 @@ Set repo Variables `API_BASE_URL=https://openrouter.ai/api/v1` and
 ```
 scripts/main.py          daily orchestrator
 scripts/topics.py        area selection + seen-topic state
-scripts/generate.py      build daily brief + vocab from the LLM
+scripts/research.py      fetch real Wikipedia sources (grounding)
+scripts/generate.py      build daily brief + vocab from the LLM (grounded, cited)
 scripts/weekly_review.py weekly active-recall vocab review
 scripts/llm.py           shared DeepSeek/OpenAI-compatible call (retry/backoff)
 scripts/vocab_log.py     append + load words in vocab/vocab.jsonl
