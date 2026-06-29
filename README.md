@@ -20,6 +20,12 @@ Second-order effects → A question to sit with → Go deeper → **Vocabulary B
 
 The "Go deeper" threads and the open question are good prompts to then discuss with Claude.
 
+## Weekly vocab review
+Once a week the tool emails an **active-recall review** of the past 7 days' words: a
+fill-in-the-blank quiz (new sentences, not the originals) + answer key, a short
+"connect-the-dots" paragraph that reuses the words, and a clean reference list. Archived to
+`weekly/YYYY-Www.md`.
+
 ## Setup
 1. `pip install -r requirements.txt`
 2. `cp .env.example .env` and fill in `API_KEY` (DeepSeek) and `RESEND_API_KEY` (Resend).
@@ -27,10 +33,13 @@ The "Go deeper" threads and the open question are good prompts to then discuss w
 
 ## Run
 ```bash
-python scripts/main.py --dry-run   # generate & print only — no save/email/state
-python scripts/main.py             # full run: save + log vocab + email + record topic
+python scripts/main.py --dry-run            # daily brief: generate & print only
+python scripts/main.py                       # daily brief: save + log vocab + email + record
+python scripts/weekly_review.py --dry-run    # weekly review: generate & print only
+python scripts/weekly_review.py              # weekly review: save + email
 ```
-A run is skipped if a topic was already generated today (set `FORCE_RUN=1` to override).
+The daily run is skipped if a topic was already generated today; the weekly run is skipped
+if a review for the current ISO week already exists (set `FORCE_RUN=1` to override either).
 
 ## Daily automation (GitHub Actions)
 `.github/workflows/daily.yml` runs once each morning (~07:00 Rome, DST-safe twin cron) and
@@ -39,7 +48,10 @@ commits the brief + vocab + state back to the repo. Configure on the repo:
 - **Variables:** `EMAIL_TO` (the Resend account owner address), optional `API_BASE_URL`,
   `API_MODEL`, `EMAIL_FROM`
 
-Trigger a test run from the Actions tab ("Run workflow") — manual runs force generation.
+`.github/workflows/weekly.yml` runs every Sunday morning (~08:00 Rome) and emails the
+weekly vocab review, committing `weekly/` back. Same secrets/variables.
+
+Trigger a test run of either from the Actions tab ("Run workflow") — manual runs force generation.
 
 ## Using Claude instead of DeepSeek
 Set repo Variables `API_BASE_URL=https://openrouter.ai/api/v1` and
@@ -47,13 +59,16 @@ Set repo Variables `API_BASE_URL=https://openrouter.ai/api/v1` and
 
 ## Layout
 ```
-scripts/main.py        orchestrator
-scripts/topics.py      area selection + seen-topic state
-scripts/generate.py    LLM call -> brief + vocab (DeepSeek, retry/backoff)
-scripts/vocab_log.py   append words to vocab/vocab.jsonl
-scripts/email_brief.py Resend delivery
-interests.txt          broad areas to draw from
-daily/                 dated brief archive
-vocab/vocab.jsonl      cumulative vocabulary log
-data/seen_topics.json  covered topics (prevents repeats)
+scripts/main.py          daily orchestrator
+scripts/topics.py        area selection + seen-topic state
+scripts/generate.py      build daily brief + vocab from the LLM
+scripts/weekly_review.py weekly active-recall vocab review
+scripts/llm.py           shared DeepSeek/OpenAI-compatible call (retry/backoff)
+scripts/vocab_log.py     append + load words in vocab/vocab.jsonl
+scripts/email_brief.py   Resend delivery
+interests.txt            broad areas to draw from
+daily/                   dated brief archive
+weekly/                  weekly review archive (YYYY-Www.md)
+vocab/vocab.jsonl        cumulative vocabulary log
+data/seen_topics.json    covered topics (prevents repeats)
 ```

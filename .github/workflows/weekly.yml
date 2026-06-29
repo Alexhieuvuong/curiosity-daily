@@ -1,0 +1,70 @@
+name: Weekly Vocab Review
+
+on:
+  schedule:
+    # One review every Sunday morning ~08:00 Rome, year-round. Same DST trick as the
+    # daily workflow: twin tick (06/07 UTC covers CEST/CET); weekly_review.py's
+    # "review already exists for this ISO week" guard keeps only the first to land.
+    #   Summer CEST = UTC+2 -> 06 UTC ~= 08:00 Rome
+    #   Winter CET  = UTC+1 -> 07 UTC ~= 08:00 Rome
+    - cron: '0 6,7 * * 0'
+  workflow_dispatch: {}            # manual run for testing — forces a fresh review
+
+permissions:
+  contents: write
+
+concurrency:
+  group: curiosity-weekly
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Build weekly review
+        env:
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          API_KEY: ${{ secrets.API_KEY }}
+          API_BASE_URL: ${{ vars.API_BASE_URL || 'https://api.deepseek.com' }}
+          API_MODEL: ${{ vars.API_MODEL || 'deepseek-chat' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_TO: ${{ vars.EMAIL_TO || 'hieudinhvuong@gmail.com' }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM || 'onboarding@resend.dev' }}
+        run: python scripts/weekly_review.py
+
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add weekly/ 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No new weekly review to commit."
+          else
+            git commit -m "weekly review: $(date -u +'%Y-%m-%d %H:%M UTC')"
+            pushed=false
+            for i in 1 2 3 4 5; do
+              if git pull --rebase --autostash origin "${GITHUB_REF_NAME}" \
+                 && git push origin "HEAD:${GITHUB_REF_NAME}"; then
+                pushed=true
+                break
+              fi
+              echo "Push rejected (race) — retry $i..."
+              sleep 5
+            done
+            if [ "$pushed" != true ]; then
+              echo "::error::Could not push after 5 attempts."
+              exit 1
+            fi
+          fi

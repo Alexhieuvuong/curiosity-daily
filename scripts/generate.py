@@ -15,15 +15,9 @@ Builder section stays in the brief.
 """
 
 import json
-import os
 import re
-import time
 
-import requests
-
-MAX_RETRIES = 5
-MAX_BACKOFF = 60
-
+from llm import chat
 
 SYSTEM_PROMPT = """You are a brilliant, curious explainer — part economist, part \
 investigative journalist, part patient teacher. You write a short daily brief whose job \
@@ -101,33 +95,9 @@ Finally, AFTER the brief, output the SAME vocabulary as a single fenced JSON cod
 
 
 def generate(area, recent_topics, date_str):
-    api_key = os.environ.get("API_KEY")
-    if not api_key:
-        raise ValueError("API_KEY environment variable is required")
-
-    base_url = os.environ.get("API_BASE_URL") or "https://api.deepseek.com"
-    model = os.environ.get("API_MODEL") or "deepseek-chat"
-
     user_prompt = _build_user_prompt(area, recent_topics, date_str)
-
-    url = f"{base_url}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.9,  # higher than the news digest — we want creative topic variety
-        "max_tokens": 8192,
-    }
-
-    print(f"Calling {model}...")
-    result = _post_with_retry(url, headers, payload)
-    text = result["choices"][0]["message"]["content"].strip()
+    # Higher temperature than a news digest — we want creative topic variety.
+    text, model = chat(SYSTEM_PROMPT, user_prompt, temperature=0.9)
     return _parse(text, model, date_str)
 
 
@@ -153,29 +123,3 @@ def _parse(text, model, date_str):
 
     body = f"{text}\n\n---\n*Curiosity Daily · {date_str} · generated with {model}*\n"
     return topic, body, vocab
-
-
-def _post_with_retry(url, headers, payload):
-    """POST with backoff, honoring Retry-After on 429/5xx (free models rate-limit)."""
-    last_exc = None
-    for attempt in range(MAX_RETRIES):
-        resp = requests.post(url, headers=headers, json=payload, timeout=180)
-        if resp.status_code == 429 or resp.status_code >= 500:
-            retry_after = resp.headers.get("Retry-After")
-            try:
-                wait = float(retry_after) if retry_after else 2 ** attempt
-            except ValueError:
-                wait = 2 ** attempt
-            wait = min(wait, MAX_BACKOFF) + 1
-            last_exc = requests.exceptions.HTTPError(
-                f"{resp.status_code} from API", response=resp
-            )
-            if attempt < MAX_RETRIES - 1:
-                print(f"  [retry] {resp.status_code} — waiting {wait:.0f}s "
-                      f"(attempt {attempt + 1}/{MAX_RETRIES})...")
-                time.sleep(wait)
-                continue
-            raise last_exc
-        resp.raise_for_status()
-        return resp.json()
-    raise last_exc

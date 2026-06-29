@@ -8,6 +8,7 @@ lives inline in each day's brief under "## Vocabulary Builder".
 
 import json
 import os
+from datetime import date, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOCAB_FILE = os.path.join(ROOT, "vocab", "vocab.jsonl")
@@ -38,3 +39,33 @@ def append_vocab(entries, topic, date_str):
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
             written += 1
     return written
+
+
+def load_recent(days):
+    """Vocab rows from the last `days` days (inclusive of today), deduped by word.
+
+    ISO date strings (YYYY-MM-DD) sort lexically, so a string >= comparison is a
+    correct date filter. Keeps the first occurrence of each word.
+    """
+    if not os.path.exists(VOCAB_FILE):
+        return []
+    cutoff = (date.today() - timedelta(days=days - 1)).isoformat()
+    seen_words = set()
+    out = []
+    with open(VOCAB_FILE, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("date", "") < cutoff:
+                continue
+            key = (row.get("word") or "").strip().lower()
+            if not key or key in seen_words:
+                continue
+            seen_words.add(key)
+            out.append(row)
+    return out
