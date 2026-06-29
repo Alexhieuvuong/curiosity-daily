@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .venv/
 .DS_Store
+# vocab.xlsx is a derived artifact (regenerated from vocab.jsonl) — keep binaries out of git
+vocab/*.xlsx
