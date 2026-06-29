@@ -25,43 +25,21 @@ except ImportError:
     pass
 
 from llm import chat  # noqa: E402
+from skills import load_skill  # noqa: E402
 from vocab_log import load_recent  # noqa: E402
 from email_brief import send_email  # noqa: E402
 
 WEEKLY_DIR = os.path.join(ROOT, "weekly")
 DAYS = 7
 
-SYSTEM_PROMPT = """You are a warm, effective English vocabulary coach. You design a \
-weekly review that reinforces words through ACTIVE RECALL — making the learner retrieve \
-each word from memory, not just reread it. Be encouraging and concise. Output Markdown \
-only, no preamble."""
-
 
 def _build_prompt(rows, start_s, end_s):
     words_block = "\n".join(
         f"- {r['word']} ({r.get('pos', '')}): {r.get('definition', '')}" for r in rows
     )
-    return f"""Here are this week's {len(rows)} vocabulary words ({start_s} to {end_s}):
-
-{words_block}
-
-Write a review with EXACTLY these sections, in this order, in Markdown:
-
-## This week in a nutshell
-<1–2 encouraging sentences noting how many words and the date span.>
-
-## Active recall quiz
-<For EACH word, write ONE new fill-in-the-blank sentence in a DIFFERENT context than a \
-plain dictionary example, with the target word replaced by "______". Number them 1..N. \
-Never reveal the target word inside its own sentence.>
-
-## Answer key
-<A numbered list matching the quiz, giving the word for each blank.>
-
-## Connect the dots
-<One short paragraph (4–7 sentences) that naturally weaves in as many of these words as \
-possible in a single coherent scene or argument. **Bold** each target word where it \
-appears.>"""
+    return (f"Here are this week's {len(rows)} vocabulary words ({start_s} to {end_s}):\n\n"
+            f"{words_block}\n\n"
+            "Write the review following your instructions exactly.")
 
 
 def _reference(rows):
@@ -101,8 +79,8 @@ def main():
     header = (f"# \U0001F4DA Weekly Vocab Review · {week_id}\n\n"
               f"> {len(rows)} words from {start_s} to {end_s}.\n")
     try:
-        review, model = chat(SYSTEM_PROMPT, _build_prompt(rows, start_s, end_s),
-                             temperature=0.7)
+        review, model = chat(load_skill("weekly-reviewer"),
+                             _build_prompt(rows, start_s, end_s), temperature=0.7)
         footer = f"\n\n---\n*Curiosity Daily · weekly review · generated with {model}*\n"
     except Exception as e:  # never fail the run over the quiz — fall back to the list
         print(f"[warn] LLM review failed ({e}); sending plain word list.")

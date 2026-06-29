@@ -1,20 +1,15 @@
 """
-generate.py — produce one daily curiosity brief + vocabulary, GROUNDED in real
-sources (see research.py) rather than invented from the model's memory.
+generate.py — produce one daily curiosity brief + vocabulary, GROUNDED in real sources
+(research.py) and FACT-CHECKED by a supervisor pass (supervisor.py) before delivery.
 
-Anti-fabrication design:
-- The brief must base every factual claim on the SOURCE MATERIAL passed in, and cite
-  it inline as [1], [2], ...
-- Anything illustrative/hypothetical must be prefixed "Illustrative:".
-- The ## Sources list is injected here from the real retrieval result, so the URLs
-  cannot be fabricated by the model.
-- If no sources were retrieved, a fallback prompt forbids specific facts entirely.
-
-The model returns:
-  TOPIC: <specific title>                 (first line)
-  # <title> ... brief (first principles -> adjacent fields -> real-world case) ...
-  ## Vocabulary Builder ...
-  ```json [ {word, pos, ipa, definition, example}, ... ] ```
+Flow:
+1. Draft the brief with the `brief-writer` skill (system prompt) + dynamic data (user prompt).
+2. Parse the TOPIC line and the trailing ```json vocab block (vocab is set aside — not a
+   fabrication risk).
+3. Run the `fact-supervisor` review pass on the prose: it audits every factual claim against
+   the sources and auto-revises unsupported/uncited ones.
+4. Inject the verified ## Sources list (real URLs, never model-written) before the Vocabulary
+   Builder, add a footer.
 
 generate() returns (topic_title, body_markdown, vocab_list).
 """
@@ -23,109 +18,70 @@ import json
 import re
 
 from llm import chat
-
-SYSTEM_PROMPT = """You are a sharp research analyst and patient teacher who writes a \
-short daily brief that sparks curiosity AND teaches the reader how to think about a topic.
-
-You are NOT a creative writer inventing facts. You work like a careful explainer:
-- Every factual claim — definitions, statistics, dates, named people/places/events/cases \
-— must come from the SOURCE MATERIAL you are given, and you cite it inline as [1], [2], ...
-- You may add ANALYSIS and INTERPRETATION (incentives, second-order effects, connections \
-to other fields), but it must clearly follow from the sourced facts and be framed as your \
-reasoning, not asserted as established fact.
-- If you use a simplified or hypothetical example that is NOT in the sources, you MUST \
-prefix it with "Illustrative:" so the reader knows it is not a verified fact.
-- Never invent specific numbers, dates, or named cases. If the sources do not support a \
-specific, reason qualitatively instead. It is better to say less than to fabricate.
-- Write in clear, advanced-but-readable English (a learner reads this to grow vocabulary)."""
+from skills import load_skill
+from supervisor import review_and_revise
 
 
 def _sources_block(sources):
-    parts = []
-    for i, s in enumerate(sources, start=1):
-        parts.append(f"[{i}] {s['title']} ({s['url']})\n{s['extract']}")
-    return "\n\n".join(parts)
+    return "\n\n".join(
+        f"[{i}] {s['title']} ({s['url']})\n{s['extract']}"
+        for i, s in enumerate(sources, start=1)
+    )
 
 
 def _build_user_prompt(area, recent_topics, date_str, sources):
     recent_block = "\n".join(f"- {t}" for t in recent_topics) or "(none yet)"
-
     if sources:
-        grounding = f"""You have been given REAL reference material below. Choose ONE \
-specific, curiosity-sparking angle within "{area}" that THIS material actually supports \
-— narrow enough to dig into deeply. Base all facts on the sources and cite them as [n].
-
-SOURCE MATERIAL (cite these; do not invent beyond them):
-{_sources_block(sources)}"""
+        grounding = (f'You have REAL reference material below. Choose ONE specific, '
+                     f'curiosity-sparking angle within "{area}" that THIS material supports, '
+                     f'and base all facts on it, citing [n].\n\n'
+                     f'SOURCE MATERIAL:\n{_sources_block(sources)}')
     else:
-        grounding = f"""No external sources were retrieved this time. Therefore explain \
-ONLY from first principles and broadly established concepts within "{area}". Do NOT state \
-any specific statistic, date, named program, or named case as fact. If you use an example, \
-prefix it with "Illustrative:". Keep every claim qualitative and clearly reasoned."""
+        grounding = (f'No external sources were retrieved. Explain only from first principles '
+                     f'within "{area}"; state no specific statistic, date, or named case as '
+                     f'fact; label any example "Illustrative:".')
 
     return f"""Today is {date_str}. {grounding}
 
 Your angle MUST be clearly different from every topic already covered:
 {recent_block}
 
-Write the brief in EXACTLY this structure and order, in Markdown. Keep each section tight.
-
-TOPIC: <a short, specific title — just the title text, on the very first line>
-
-# <the same title>
-
-> <one-line hook that makes the reader curious>
-
-## Why this is interesting
-<2–4 sentences.>
-
-## First principles
-<Build the idea from the ground up — the irreducible mechanic, explained plainly. Cite [n].>
-
-## Break it into pieces
-<3–5 bullets: the sub-questions or tensions worth pulling apart.>
-
-## Follow the incentives
-<Who pays, who profits, who bears the risk, and why each acts as they do. Cite [n] for facts.>
-
-## How it echoes elsewhere
-<Connect the core mechanic to 1–2 ADJACENT fields or domains where the same pattern appears.>
-
-## A real-world case
-<One concrete case grounded in the sources, cited [n]. If the sources lack a specific case, \
-give an "Illustrative:" simplified scenario instead — clearly labeled.>
-
-## Second-order effects
-<The non-obvious downstream consequences. Your analysis, following from the sourced facts.>
-
-## A question to sit with
-<ONE genuinely open question, left deliberately unresolved.>
-
-## Go deeper
-<2–3 concrete threads or angles the reader could explore or discuss next.>
-
-## Vocabulary Builder
-<8–12 useful or advanced words/phrases that appear in (or are natural to) this brief.
-Format each as a numbered list item exactly like:
-1. **word** — (part of speech, /IPA/) — concise definition. _Example: a sentence using it in this topic's context._>
-
-Do NOT write a "Sources" section yourself — a verified one is appended automatically.
-
-Finally, AFTER the brief, output the SAME vocabulary as one fenced JSON code block
-(parsed by a program — keep keys exactly as shown, valid JSON, no comments):
-
-```json
-[
-  {{"word": "...", "pos": "...", "ipa": "...", "definition": "...", "example": "..."}}
-]
-```"""
+Write the brief now, following your instructions exactly: the TOPIC line first, then the
+sections in order, then the JSON vocabulary block."""
 
 
 def generate(area, recent_topics, date_str, sources):
-    user_prompt = _build_user_prompt(area, recent_topics, date_str, sources)
-    # Lower temperature than before — grounded summarization, not free invention.
-    text, model = chat(SYSTEM_PROMPT, user_prompt, temperature=0.6)
-    return _parse(text, model, date_str, sources)
+    system = load_skill("brief-writer")
+    user = _build_user_prompt(area, recent_topics, date_str, sources)
+    # Grounded summarization, not free invention.
+    raw, model = chat(system, user, temperature=0.6)
+
+    topic, prose, vocab = _parse_raw(raw)
+    prose, _report = review_and_revise(prose, sources)  # auto-revise unsupported claims
+    body = _assemble(prose, sources, date_str, model)
+    return topic, body, vocab
+
+
+def _parse_raw(text):
+    """Split raw model output into (topic, prose, vocab_list). Strips the JSON vocab block."""
+    topic = "Untitled"
+    lines = text.splitlines()
+    if lines and lines[0].strip().upper().startswith("TOPIC:"):
+        topic = lines[0].split(":", 1)[1].strip() or topic
+        text = "\n".join(lines[1:]).strip()
+
+    vocab = []
+    m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if m:
+        try:
+            parsed = json.loads(m.group(1))
+            if isinstance(parsed, list):
+                vocab = parsed
+        except json.JSONDecodeError:
+            print("  [warn] could not parse vocab JSON block — skipping vocab log.")
+        text = text[: m.start()].rstrip()
+
+    return topic, text, vocab
 
 
 def _sources_section(sources):
@@ -138,33 +94,12 @@ def _sources_section(sources):
     return "\n".join(lines) + "\n"
 
 
-def _parse(text, model, date_str, sources):
-    """Split model output into (topic, body_markdown, vocab_list)."""
-    topic = "Untitled"
-    lines = text.splitlines()
-    if lines and lines[0].strip().upper().startswith("TOPIC:"):
-        topic = lines[0].split(":", 1)[1].strip() or topic
-        text = "\n".join(lines[1:]).strip()
-
-    # Pull out the trailing machine-readable JSON block and remove it from the body.
-    vocab = []
-    m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
-    if m:
-        try:
-            parsed = json.loads(m.group(1))
-            if isinstance(parsed, list):
-                vocab = parsed
-        except json.JSONDecodeError:
-            print("  [warn] could not parse vocab JSON block — skipping vocab log.")
-        text = text[: m.start()].rstrip()
-
-    # Inject the verified Sources list just before the Vocabulary Builder (or at the end).
+def _assemble(prose, sources, date_str, model):
+    """Inject the verified Sources list before Vocabulary Builder; add the footer."""
     sources_md = _sources_section(sources)
-    vb = re.search(r"^##\s+Vocabulary Builder", text, re.MULTILINE | re.IGNORECASE)
+    vb = re.search(r"^##\s+Vocabulary Builder", prose, re.MULTILINE | re.IGNORECASE)
     if vb:
-        text = text[: vb.start()].rstrip() + "\n\n" + sources_md + "\n" + text[vb.start():]
+        prose = prose[: vb.start()].rstrip() + "\n\n" + sources_md + "\n" + prose[vb.start():]
     else:
-        text = text.rstrip() + "\n\n" + sources_md
-
-    body = f"{text}\n\n---\n*Curiosity Daily · {date_str} · grounded summary via {model}*\n"
-    return topic, body, vocab
+        prose = prose.rstrip() + "\n\n" + sources_md
+    return f"{prose}\n\n---\n*Curiosity Daily · {date_str} · grounded & fact-checked · {model}*\n"
