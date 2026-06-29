@@ -7,15 +7,21 @@ Fail-safe by design: any error or unparseable output returns the ORIGINAL prose
 unchanged, so a flaky review never breaks or blanks the daily run.
 """
 
+import re
+
 from llm import chat
 from research import sources_prompt_block
 from skills import load_skill
 
 DELIM = "---REVISED BRIEF---"
+# Tolerate delimiter formatting drift: a line that is essentially "REVISED BRIEF",
+# optionally wrapped in dashes/hashes/asterisks/quotes/colon.
+_SPLIT = re.compile(r"(?im)^[\s>#*_\-]*revised brief[\s>#*_:\-]*$")
 
 
 def review_and_revise(prose, sources):
-    """Return (possibly-revised prose, report dict {verdict, issues})."""
+    """Return (possibly-revised prose, report dict {verdict, issues}). Fail-safe: any
+    error or unparseable output returns the original prose unchanged."""
     system = load_skill("fact-supervisor")
     user = _build_user(prose, sources)
     try:
@@ -24,18 +30,23 @@ def review_and_revise(prose, sources):
         print(f"[supervisor] call failed ({e}); keeping original brief.")
         return prose, {"verdict": "ERROR", "issues": [str(e)]}
 
-    if DELIM in text:
-        header, revised = text.split(DELIM, 1)
-        revised = revised.strip()
-        verdict, issues = _parse_header(header)
-        if revised:
-            print(f"[supervisor] {verdict}; {len(issues)} issue(s) found.")
-            for it in issues:
-                print(f"    - {it}")
-            return revised, {"verdict": verdict, "issues": issues}
+    parts = _SPLIT.split(text, maxsplit=1)
+    if len(parts) == 2 and parts[1].strip():
+        verdict, issues = _parse_header(parts[0])
+        revised = parts[1].strip()
+        print(f"[supervisor] {verdict}; {len(issues)} issue(s) found.")
+        for it in issues:
+            print(f"    - {it}")
+        return revised, {"verdict": verdict, "issues": issues}
+
+    # No revised brief emitted. If the model said PASS, the original is fine.
+    verdict, issues = _parse_header(text)
+    if verdict.upper().startswith("PASS"):
+        print(f"[supervisor] PASS; {len(issues)} note(s) — no changes.")
+        return prose, {"verdict": "PASS", "issues": issues}
 
     print("[supervisor] output not parseable — keeping original brief.")
-    return prose, {"verdict": "UNPARSED", "issues": []}
+    return prose, {"verdict": "UNPARSED", "issues": issues}
 
 
 def _build_user(prose, sources):
