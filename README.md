@@ -16,7 +16,9 @@ second-order effects, and one open question left deliberately unresolved. It the
 
 ## Grounded, not fabricated
 Each brief is **research-and-summary, not free invention.** Before writing, the tool
-retrieves real reference text from Wikipedia (`scripts/research.py`, free, no key). The
+retrieves real reference text from reputable sources (`scripts/research.py`, free, no key):
+**Wikipedia** for the encyclopedic overview and **OpenAlex** for peer-reviewed academic
+papers (abstracts + DOI links). The
 model must base every factual claim on that source material and **cite it inline as [n]**;
 anything illustrative is prefixed `Illustrative:`; specific numbers/dates/named cases that
 aren't in the sources are not allowed. The `## Sources` list is injected from the real
@@ -83,7 +85,7 @@ Set repo Variables `API_BASE_URL=https://openrouter.ai/api/v1` and
 ```
 scripts/main.py          daily orchestrator
 scripts/topics.py        area selection + seen-topic state
-scripts/research.py      fetch real Wikipedia sources (grounding)
+scripts/research.py      fetch real sources: Wikipedia + academic papers (OpenAlex)
 scripts/generate.py      build daily brief + vocab (grounded, cited, supervised)
 scripts/supervisor.py    fact-check pass — audits vs sources, auto-revises
 scripts/skills.py        load skills/<name>/SKILL.md prompts

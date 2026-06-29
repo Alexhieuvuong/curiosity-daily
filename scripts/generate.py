@@ -18,24 +18,18 @@ import json
 import re
 
 from llm import chat
+from research import sources_prompt_block
 from skills import load_skill
 from supervisor import review_and_revise
-
-
-def _sources_block(sources):
-    return "\n\n".join(
-        f"[{i}] {s['title']} ({s['url']})\n{s['extract']}"
-        for i, s in enumerate(sources, start=1)
-    )
 
 
 def _build_user_prompt(area, recent_topics, date_str, sources):
     recent_block = "\n".join(f"- {t}" for t in recent_topics) or "(none yet)"
     if sources:
-        grounding = (f'You have REAL reference material below. Choose ONE specific, '
-                     f'curiosity-sparking angle within "{area}" that THIS material supports, '
-                     f'and base all facts on it, citing [n].\n\n'
-                     f'SOURCE MATERIAL:\n{_sources_block(sources)}')
+        grounding = (f'You have REAL reference material below (a mix of encyclopedic and '
+                     f'academic sources). Choose ONE specific, curiosity-sparking angle within '
+                     f'"{area}" that THIS material supports, and base all facts on it, citing '
+                     f'[n].\n\nSOURCE MATERIAL:\n{sources_prompt_block(sources)}')
     else:
         grounding = (f'No external sources were retrieved. Explain only from first principles '
                      f'within "{area}"; state no specific statistic, date, or named case as '
@@ -90,7 +84,9 @@ def _sources_section(sources):
                 "reasoned from first principles only._\n")
     lines = ["## Sources", ""]
     for i, s in enumerate(sources, start=1):
-        lines.append(f"[{i}] [{s['title']}]({s['url']})")
+        kind = s.get("kind")
+        suffix = f" — {kind}" if kind else ""
+        lines.append(f"[{i}] [{s['title']}]({s['url']}){suffix}")
     return "\n".join(lines) + "\n"
 
 

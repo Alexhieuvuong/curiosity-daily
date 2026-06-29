@@ -8,6 +8,7 @@ unchanged, so a flaky review never breaks or blanks the daily run.
 """
 
 from llm import chat
+from research import sources_prompt_block
 from skills import load_skill
 
 DELIM = "---REVISED BRIEF---"
@@ -39,10 +40,7 @@ def review_and_revise(prose, sources):
 
 def _build_user(prose, sources):
     if sources:
-        src = "\n\n".join(
-            f"[{i}] {s['title']} ({s['url']})\n{s['extract']}"
-            for i, s in enumerate(sources, start=1)
-        )
+        src = sources_prompt_block(sources)
     else:
         src = "(no external sources were provided — the brief must contain no specific facts)"
     return (f"SOURCE MATERIAL:\n{src}\n\n"
