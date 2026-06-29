@@ -1,0 +1,77 @@
+name: Curiosity Daily (1x/morning)
+
+on:
+  schedule:
+    # Goal: ONE brief every morning around 07:00 Rome time, year-round.
+    # GitHub Actions cron runs in UTC and does NOT follow DST, and often fires late or
+    # drops a tick. So we fire a TWIN pair (~1h apart) covering both offsets, and let
+    # main.py's "already generated today" guard keep only the first to land:
+    #   Summer CEST = UTC+2 -> 05 UTC ~= 07:00 Rome
+    #   Winter CET  = UTC+1 -> 06 UTC ~= 07:00 Rome
+    - cron: '0 5,6 * * *'
+  workflow_dispatch: {}            # manual run for testing — forces generation (FORCE_RUN=1)
+
+permissions:
+  contents: write                  # needed to commit the brief + state back to the repo
+
+concurrency:
+  group: curiosity-daily
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Generate brief
+        env:
+          # Manual runs force generation even if today already ran; scheduled runs respect
+          # the "one per day" guard in main.py.
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          API_KEY: ${{ secrets.API_KEY }}
+          # Default DeepSeek. For Claude via OpenRouter, set repo Variables:
+          #   API_BASE_URL = https://openrouter.ai/api/v1
+          #   API_MODEL    = anthropic/claude-3.5-sonnet
+          API_BASE_URL: ${{ vars.API_BASE_URL || 'https://api.deepseek.com' }}
+          API_MODEL: ${{ vars.API_MODEL || 'deepseek-chat' }}
+          # Email via Resend (optional — missing RESEND_API_KEY just skips email).
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_TO: ${{ vars.EMAIL_TO || 'hieudinhvuong@gmail.com' }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM || 'onboarding@resend.dev' }}
+        run: python scripts/main.py
+
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add daily/ vocab/ data/ 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No changes — nothing generated this tick."
+          else
+            git commit -m "brief: $(date -u +'%Y-%m-%d %H:%M UTC')"
+            # Rebase + retry in case a twin tick raced us to push.
+            pushed=false
+            for i in 1 2 3 4 5; do
+              if git pull --rebase --autostash origin main && git push; then
+                pushed=true
+                break
+              fi
+              echo "Push rejected (race) — retry $i..."
+              sleep 5
+            done
+            if [ "$pushed" != true ]; then
+              echo "::error::Could not push after 5 attempts."
+              exit 1
+            fi
+          fi

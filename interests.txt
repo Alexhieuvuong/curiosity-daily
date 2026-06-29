@@ -1,0 +1,32 @@
+# Curiosity Daily — broad interest areas (one per line).
+# Each morning the tool picks one area and finds a fresh, specific angle within it.
+# Edit freely: add, remove, reorder. Lines starting with '#' and blank lines are ignored.
+
+Private equity and leveraged buyouts
+The informal economy
+Behavioral economics and cognitive biases
+Game theory and strategic incentives
+Network effects and platform economics
+Supply chains and logistics
+The economics of attention and media
+Geopolitics of energy and resources
+Monetary policy and central banking
+Insurance and the pricing of risk
+Black markets and illicit trade
+Urban economics and housing
+The economics of crime and punishment
+Labor markets and gig work
+Industrial organization and monopolies
+Development economics
+The history and nature of money
+Tax havens and offshore finance
+Venture capital and startup financing
+The economics of healthcare
+Commodity and agricultural markets
+Shipping and maritime trade
+Real estate and the value of land
+The science of habits and motivation
+Complex systems and emergence
+Auctions and market design
+The economics of information and signaling
+Pensions, debt, and demographics
