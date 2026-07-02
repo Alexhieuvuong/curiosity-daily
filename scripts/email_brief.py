@@ -13,6 +13,7 @@ Env:
 """
 
 import os
+import time
 
 import requests
 import markdown as md_lib
@@ -22,6 +23,11 @@ import markdown as md_lib
 # deliver to the account owner's own address until a domain is verified.
 DEFAULT_TO = "hieudinhvuong@gmail.com"
 DEFAULT_FROM = "onboarding@resend.dev"
+
+# Retry only transient failures (network errors, 5xx). A 4xx is a config error
+# (bad key, unverified sender) that retrying won't fix, so we fail fast on those.
+_MAX_ATTEMPTS = 3
+_BACKOFF_SECONDS = 3
 
 
 def _wrap_html(inner: str) -> str:
@@ -38,36 +44,49 @@ def _wrap_html(inner: str) -> str:
 </body></html>"""
 
 
-def send_email(subject: str, markdown_body: str) -> None:
-    """Send the brief via Resend. Skips silently if RESEND_API_KEY is unset."""
+def send_email(subject: str, markdown_body: str) -> bool:
+    """Send the brief via Resend.
+
+    Returns True if the email was sent OR intentionally skipped (no RESEND_API_KEY),
+    and False if a configured send failed. The caller uses this to fail the run so a
+    missing morning email is noticed the same day instead of days later.
+    """
     api_key = os.environ.get("RESEND_API_KEY")
     if not api_key:
         print("[email] RESEND_API_KEY not set — skipping email.")
-        return
+        return True
 
     to_addr = os.environ.get("EMAIL_TO") or DEFAULT_TO
     from_addr = os.environ.get("EMAIL_FROM") or DEFAULT_FROM
 
     html = _wrap_html(md_lib.markdown(markdown_body, extensions=["extra", "sane_lists"]))
+    payload = {"from": from_addr, "to": [to_addr], "subject": subject, "html": html}
 
-    try:
-        resp = requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "from": from_addr,
-                "to": [to_addr],
-                "subject": subject,
-                "html": html,
-            },
-            timeout=30,
-        )
-        if resp.status_code in (200, 201):
-            print(f"[email] Sent to {to_addr} (id: {resp.json().get('id')})")
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            resp = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=30,
+            )
+        except requests.RequestException as e:  # network error — transient, retry
+            print(f"[email] Network error (attempt {attempt}/{_MAX_ATTEMPTS}): {e}")
         else:
-            print(f"[email] Failed {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:  # an email error must never break the whole run
-        print(f"[email] Error while sending: {e}")
+            if resp.status_code in (200, 201):
+                print(f"[email] Sent to {to_addr} (id: {resp.json().get('id')})")
+                return True
+            if resp.status_code < 500:  # 4xx — config error, retrying won't help
+                print(f"[email] Failed {resp.status_code} (not retrying): {resp.text[:200]}")
+                return False
+            print(f"[email] Server error {resp.status_code} "
+                  f"(attempt {attempt}/{_MAX_ATTEMPTS}): {resp.text[:200]}")
+
+        if attempt < _MAX_ATTEMPTS:
+            time.sleep(_BACKOFF_SECONDS)
+
+    print(f"[email] Giving up after {_MAX_ATTEMPTS} attempts.")
+    return False

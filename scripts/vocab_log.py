@@ -14,11 +14,33 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOCAB_FILE = os.path.join(ROOT, "vocab", "vocab.jsonl")
 
 
+def _existing_words_for_date(date_str):
+    """Set of lowercased words already logged for date_str, so a rerun (FORCE_RUN, or
+    a second cron tick that slips past the daily guard) doesn't double-log them."""
+    existing = set()
+    if not os.path.exists(VOCAB_FILE):
+        return existing
+    with open(VOCAB_FILE, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("date") == date_str:
+                existing.add((row.get("word") or "").strip().lower())
+    return existing
+
+
 def append_vocab(entries, topic, date_str):
-    """Append vocab rows; returns how many were written. Skips entries without a word."""
+    """Append vocab rows; returns how many were written. Skips entries without a word
+    and any word already logged for this date (dedup across reruns)."""
     if not entries:
         return 0
     os.makedirs(os.path.dirname(VOCAB_FILE), exist_ok=True)
+    seen_today = _existing_words_for_date(date_str)
     written = 0
     with open(VOCAB_FILE, "a", encoding="utf-8") as f:
         for e in entries:
@@ -27,6 +49,10 @@ def append_vocab(entries, topic, date_str):
             word = (e.get("word") or "").strip()
             if not word:
                 continue
+            key = word.lower()
+            if key in seen_today:  # already logged today — skip the duplicate
+                continue
+            seen_today.add(key)
             row = {
                 "date": date_str,
                 "topic": topic,

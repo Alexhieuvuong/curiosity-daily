@@ -45,6 +45,11 @@ jobs:
         run: python scripts/weekly_review.py
 
       - name: Commit results
+        # Run even if the generate step exited non-zero (e.g. email delivery failed):
+        # the review is already written, so commit it. The job still reports failure
+        # from the earlier step, which sends the notification. The staged-diff check
+        # below makes this a no-op when nothing was actually generated.
+        if: ${{ !cancelled() }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
