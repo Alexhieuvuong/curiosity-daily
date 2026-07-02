@@ -54,8 +54,13 @@ def pick_area(areas, seen):
 def append_seen(seen, topic, area, date_str):
     seen.append({"date": date_str, "area": area, "topic": topic})
     os.makedirs(os.path.dirname(SEEN_FILE), exist_ok=True)
-    with open(SEEN_FILE, "w", encoding="utf-8") as f:
+    # Write to a temp file then atomically replace, so a crash mid-write can never
+    # leave data/seen_topics.json truncated or half-written (which would break the
+    # next run's json.load and lose all topic history).
+    tmp = SEEN_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(seen, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, SEEN_FILE)
     return seen
 
 

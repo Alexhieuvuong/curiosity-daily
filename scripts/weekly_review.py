@@ -13,6 +13,7 @@ so the workflow's twin DST tick never double-posts.
 
 import argparse
 import os
+import sys
 from datetime import date, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -100,7 +101,12 @@ def main():
         f.write(body)
     print(f"Saved {path}")
 
-    send_email(f"\U0001F4DA Weekly Vocab Review · {len(rows)} words", body)
+    sent = send_email(f"\U0001F4DA Weekly Vocab Review · {len(rows)} words", body)
+    if not sent:
+        # The review is saved; only delivery failed. Exit non-zero so the workflow
+        # (which still commits the review) surfaces a failure notification.
+        print("::error::Weekly review generated and saved, but email delivery failed.")
+        sys.exit(1)
     print("Done.")
 
 
