@@ -19,6 +19,7 @@ tick never double-posts. Set FORCE_RUN=1 (workflow_dispatch does this) to overri
 
 import argparse
 import os
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -83,7 +84,12 @@ def main():
 
     append_seen(seen, topic, area, date_str)
 
-    send_email(f"\U0001F9E0 Curiosity Daily · {topic}", body)
+    sent = send_email(f"\U0001F9E0 Curiosity Daily · {topic}", body)
+    if not sent:
+        # The brief is saved and state is recorded; only delivery failed. Exit non-zero
+        # so the workflow (which still commits the brief) surfaces a failure notification.
+        print("::error::Brief generated and saved, but email delivery failed.")
+        sys.exit(1)
     print("Done.")
 
 
